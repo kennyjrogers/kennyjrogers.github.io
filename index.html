@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Every Stone Has a Story — QR Memorial Prototype</title>
+<style>
+  :root{
+    --ink:#2e2a26; --soft:#6b6259; --paper:#faf6ef; --card:#ffffff;
+    --accent:#7a5c3e; --accent-soft:#e9dfcf; --line:#ddd2c0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+       font-family:Georgia,"Times New Roman",serif;line-height:1.65;}
+  .wrap{max-width:640px;margin:0 auto;padding:24px 18px 48px}
+  header{text-align:center;padding:32px 0 8px}
+  .rule{width:56px;height:2px;background:var(--accent);margin:14px auto;border-radius:2px}
+  h1{font-size:2rem;margin:.2em 0 0;font-weight:normal;letter-spacing:.02em}
+  .tag{color:var(--soft);font-style:italic;margin-top:.4em}
+  section{background:var(--card);border:1px solid var(--line);border-radius:8px;
+          padding:20px 22px;margin-top:20px;box-shadow:0 1px 3px rgba(60,45,25,.06)}
+  h2{font-size:1.15rem;margin:0 0 .5em;color:var(--accent);font-weight:normal;
+     letter-spacing:.06em;text-transform:uppercase}
+  a{color:var(--accent)}
+  footer{margin-top:26px;text-align:center;color:var(--soft);font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Every Stone Has a Story</h1>
+    <div class="rule"></div>
+    <p class="tag">A name and two dates are where a person is buried.<br>A story is where he lives.</p>
+  </header>
+
+  <section>
+    <h2>Memorials</h2>
+    <p><a href="m/stonewall-great-grandfather/">Our Great-Grandfather</a> —
+    resting in Stonewall, Oklahoma. A draft page in progress, built with his
+    family: both lineages, one page, and an open door for memories.</p>
+  </section>
+
+  <section>
+    <h2>Prototype Samples</h2>
+    <p><a href="prototype/memorial.html">Sample memorial page</a> — a fictional
+    placeholder showing the full design.</p>
+    <p><a href="prototype/midi-player.html">Melody player</a> — a hymn carried
+    inside a QR code itself, playable with no signal and no hosting. The
+    two-code medallion: one code opens the story, one code sings.</p>
+  </section>
+
+  <footer>
+    <p>A working prototype by Kenny Rogers, Cache, Oklahoma — in the exploring
+    phase, built with care.</p>
+  </footer>
+</div>
+</body>
+</html>

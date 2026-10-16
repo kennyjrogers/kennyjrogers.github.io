@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gravestone Melody Player — Prototype</title>
+<style>
+  :root{--ink:#2e2a26;--soft:#6b6259;--paper:#faf6ef;--card:#fff;--accent:#7a5c3e;--line:#ddd2c0}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+       font-family:Georgia,"Times New Roman",serif;line-height:1.6}
+  .wrap{max-width:620px;margin:0 auto;padding:24px 18px 48px}
+  h1{font-size:1.5rem;font-weight:normal;text-align:center;margin-bottom:.1em}
+  .sub{text-align:center;color:var(--soft);font-style:italic;margin-top:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;
+        padding:18px 20px;margin-top:18px;box-shadow:0 1px 3px rgba(60,45,25,.06)}
+  label{font-size:.9rem;letter-spacing:.05em;text-transform:uppercase;color:var(--accent)}
+  textarea{width:100%;min-height:110px;margin-top:.5em;padding:10px;border:1px solid var(--line);
+           border-radius:6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85rem;
+           word-break:break-all;background:#fffdf8}
+  button{background:var(--accent);color:#fff;border:0;border-radius:6px;cursor:pointer;
+         padding:.7em 1.6em;font-size:1rem;font-family:inherit;margin-top:12px}
+  button:active{transform:translateY(1px)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ghost{background:#e9dfcf;color:var(--accent)}
+  #status{margin-top:12px;color:var(--soft);font-size:.95rem;min-height:1.4em}
+  #notes{margin-top:6px;font-size:.95rem}
+  .small{font-size:.9rem;color:var(--soft)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎵 Gravestone Melody Player</h1>
+  <p class="sub">Prototype companion player — a whole song, carried inside a QR code</p>
+
+  <div class="card">
+    <label for="data">Scanned QR text (Base45 or Base64 MIDI)</label>
+    <textarea id="data" spellcheck="false">9Y-D8*0000060000010AU9Y-EK-00001K05UAA*0/I422IAVA81C8:8MQ03996HH4JG9Z844IA+A81C8:9SZ03996HH4JG9Z844IA+A81C8:9SZ0399HYHQLG9$844WBW00</textarea>
+    <div class="row">
+      <button id="play">▶ Decode &amp; Play</button>
+      <button id="sample" class="ghost">Reload sample melody</button>
+    </div>
+    <div id="status">The sample above is the exact text inside qr-midi.png — the first phrase of “Amazing Grace.”</div>
+    <div id="notes"></div>
+  </div>
+
+  <div class="card">
+    <p><strong>How the real visit would work:</strong> a visitor scans the small
+    “melody” QR medallion on the stone with their phone. Their scanner shows a
+    block of strange-looking text — that text <em>is</em> the song. They paste it
+    here (in the finished product, one tap in a small companion app), press play,
+    and the hymn plays — <strong>with no website, no signal, and no subscription</strong>.
+    The music lives in the stone itself.</p>
+    <p class="small">Why a separate player at all? Ordinary phone scanners can read
+    the text out of a QR code, but they can't turn MIDI numbers into sound. This
+    page is the missing translator: it decodes the text back into a standard MIDI
+    file and plays it with the browser's built-in WebAudio — no server involved.
+    Everything on this page runs on the device.</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ---------- Base45 (RFC 9285) ---------- */
+const B45 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+function base45Decode(text){
+  const idx = {}; for (let i=0;i<B45.length;i++) idx[B45[i]] = i;
+  const out = [];
+  let i = 0;
+  for (; i + 2 < text.length || (i + 3 <= text.length); i += 3){
+    if (i + 3 > text.length) break;
+    const v = idx[text[i]]*2025 + idx[text[i+1]]*45 + idx[text[i+2]];
+    if (v === undefined || Number.isNaN(v)) throw new Error("Invalid Base45 character");
+    out.push(v >> 8, v & 255);
+  }
+  const rem = text.length - i;
+  if (rem === 2){
+    const v = idx[text[i]]*45 + idx[text[i+1]];
+    if (v > 255) throw new Error("Invalid Base45 ending");
+    out.push(v);
+  } else if (rem === 1){ throw new Error("Invalid Base45 length"); }
+  return new Uint8Array(out);
+}
+function base64Decode(text){
+  const bin = atob(text.replace(/\s+/g,""));
+  const out = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function isMidi(bytes){
+  return bytes.length > 4 && bytes[0]===0x4D && bytes[1]===0x54 && bytes[2]===0x68 && bytes[3]===0x64; // "MThd"
+}
+function decodeInput(text){
+  text = text.trim();
+  try { const b = base45Decode(text); if (isMidi(b)) return {bytes:b, how:"Base45"}; } catch(e){}
+  try { const b = base64Decode(text); if (isMidi(b)) return {bytes:b, how:"Base64"}; } catch(e){}
+  throw new Error("That text didn't decode to a MIDI file. Check that the whole QR text was copied.");
+}
+
+/* ---------- Minimal Standard MIDI File parser ---------- */
+function parseMidi(bytes){
+  let p = 0;
+  const u32 = () => { const v = (bytes[p]<<24)|(bytes[p+1]<<16)|(bytes[p+2]<<8)|bytes[p+3]; p += 4; return v >>> 0; };
+  const u16 = () => { const v = (bytes[p]<<8)|bytes[p+1]; p += 2; return v; };
+  if (!isMidi(bytes)) throw new Error("Not a MIDI file (missing MThd header).");
+  p = 4; u32();                       // header length
+  const format = u16(), nTracks = u16(), division = u16();
+  if (division & 0x8000) throw new Error("SMPTE time division isn't supported in this prototype.");
+  const tempos = [];                  // {tick, microsPerQuarter}
+  const rawNotes = [];                // {note, start, end, vel}
+  for (let t = 0; t < nTracks; t++){
+    if (String.fromCharCode(bytes[p],bytes[p+1],bytes[p+2],bytes[p+3]) !== "MTrk")
+      throw new Error("Bad track header.");
+    p += 4; const trackEnd = p + u32();
+    let tick = 0, status = 0; const open = {};
+    const vlq = () => { let v = 0, b; do { b = bytes[p++]; v = (v << 7) | (b & 0x7F); } while (b & 0x80); return v; };
+    while (p < trackEnd){
+      tick += vlq();
+      let b = bytes[p];
+      if (b & 0x80){ status = b; p++; }                 // else running status
+      if (status === 0xFF){                              // meta event
+        const type = bytes[p++]; const len = vlq();
+        if (type === 0x51 && len === 3)
+          tempos.push({tick, mpq: (bytes[p]<<16)|(bytes[p+1]<<8)|bytes[p+2]});
+        p += len;
+        if (type === 0x2F) break;
+      } else if (status === 0xF0 || status === 0xF7){    // sysex: skip
+        p += vlq();
+      } else {
+        const kind = status & 0xF0;
+        const d1 = bytes[p++]; const d2 = (kind === 0xC0 || kind === 0xD0) ? 0 : bytes[p++];
+        const key = (status & 0x0F) + ":" + d1;   // channel + note number
+        if (kind === 0x90 && d2 > 0){ open[key] = {note:d1, start:tick, vel:d2}; }
+        if (kind === 0x80 || (kind === 0x90 && d2 === 0)){
+          const o = open[key];
+          if (o){ rawNotes.push({note:o.note, start:o.start, end:tick, vel:o.vel}); delete open[key]; }
+        }
+      }
+    }
+    p = trackEnd;
+  }
+  tempos.sort((a,b) => a.tick - b.tick);
+  function tickToSec(tick){
+    let sec = 0, last = 0, mpq = 500000;
+    for (const t of tempos){ if (t.tick > tick) break; sec += (t.tick - last) * mpq / division / 1e6; last = t.tick; mpq = t.mpq; }
+    return sec + (tick - last) * mpq / division / 1e6;
+  }
+  return rawNotes.map(n => ({note:n.note, start:tickToSec(n.start),
+    dur:Math.max(0.05, tickToSec(n.end) - tickToSec(n.start)), vel:n.vel / 127}))
+             .sort((a,b) => a.start - b.start);
+}
+
+/* ---------- WebAudio playback (simple oscillator synth) ---------- */
+let ctx = null;
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const noteName = n => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
+function play(notes){
+  ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === "suspended") ctx.resume();
+  const master = ctx.createGain(); master.gain.value = 0.32; master.connect(ctx.destination);
+  const t0 = ctx.currentTime + 0.08;
+  for (const n of notes){
+    const osc = ctx.createOscillator(); osc.type = "triangle";
+    osc.frequency.value = 440 * Math.pow(2, (n.note - 69) / 12);
+    const g = ctx.createGain(); const s = t0 + n.start, e = s + n.dur;
+    g.gain.setValueAtTime(0, s);
+    g.gain.linearRampToValueAtTime(0.85 * n.vel, s + 0.02);
+    g.gain.setValueAtTime(0.85 * n.vel, Math.max(s + 0.02, e - 0.09));
+    g.gain.linearRampToValueAtTime(0, e);
+    osc.connect(g); g.connect(master); osc.start(s); osc.stop(e + 0.05);
+  }
+  return notes.length ? (notes[notes.length-1].start + notes[notes.length-1].dur) : 0;
+}
+
+/* ---------- Wire up the page ---------- */
+const SAMPLE = document.getElementById("data").value;
+document.getElementById("sample").addEventListener("click", () => {
+  document.getElementById("data").value = SAMPLE;
+  document.getElementById("status").textContent = "Sample melody restored — press Decode & Play.";
+});
+document.getElementById("play").addEventListener("click", () => {
+  const status = document.getElementById("status"), notesEl = document.getElementById("notes");
+  try {
+    const {bytes, how} = decodeInput(document.getElementById("data").value);
+    const notes = parseMidi(bytes);
+    if (!notes.length) throw new Error("Decoded fine, but no notes were found in the file.");
+    const secs = play(notes);
+    status.textContent = `Decoded ${bytes.length} bytes of MIDI (via ${how}) — playing ${notes.length} notes, about ${secs.toFixed(1)} seconds. 🔊`;
+    notesEl.textContent = "Notes: " + notes.map(n => noteName(n.note)).join(" · ");
+  } catch (err){
+    status.textContent = "⚠️ " + err.message;
+    notesEl.textContent = "";
+  }
+});
+</script>
+</body>
+</html>
