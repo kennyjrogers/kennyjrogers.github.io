@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gravestone Melody Player — Prototype</title>
+<title>Gravestone Melody Player v2 (Smart-Link) — Prototype</title>
 <style>
   :root{--ink:#2e2a26;--soft:#6b6259;--paper:#faf6ef;--card:#fff;--accent:#7a5c3e;--line:#ddd2c0}
   *{box-sizing:border-box}
@@ -21,6 +21,8 @@
   button{background:var(--accent);color:#fff;border:0;border-radius:6px;cursor:pointer;
          padding:.7em 1.6em;font-size:1rem;font-family:inherit;margin-top:12px}
   button:active{transform:translateY(1px)}
+  button.bigplay{display:block;width:100%;font-size:1.35rem;padding:1em 1.6em;
+                 box-shadow:0 2px 10px rgba(122,92,62,.35)}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   .ghost{background:#e9dfcf;color:var(--accent)}
   #status{margin-top:12px;color:var(--soft);font-size:.95rem;min-height:1.4em}
@@ -192,6 +194,43 @@ document.getElementById("play").addEventListener("click", () => {
     notesEl.textContent = "";
   }
 });
+
+/* ---------- v2 smart-link support (additive — v1 behavior unchanged) ----------
+   The smart-link melody code (Code B v1.1) encodes a URL whose FRAGMENT
+   (#...) carries the Base45 melody payload. Fragments are never sent to a
+   server — the browser hands them to this page only, and this page decodes
+   them on the device. On load: if a payload is present, put it in the box,
+   decode it to prove it is intact, and leave ONE large tap target — the
+   Play button. Browsers block autoplay with sound, so the single tap is
+   by design, not a limitation we hide. A ?d= query value is accepted as
+   a fallback carrier for the same payload. */
+(function loadFromLink(){
+  let frag = "";
+  if (window.location.hash && window.location.hash.length > 1)
+    frag = window.location.hash.slice(1);
+  if (!frag){
+    try { frag = new URLSearchParams(window.location.search).get("d") || ""; } catch(e){}
+  }
+  if (!frag) return;
+  try { frag = decodeURIComponent(frag); } catch(e){ /* keep raw if not %-encoded */ }
+  const dataEl = document.getElementById("data"),
+        status = document.getElementById("status"),
+        notesEl = document.getElementById("notes"),
+        playBtn = document.getElementById("play");
+  dataEl.value = frag;
+  try {
+    const {bytes, how} = decodeInput(frag);
+    const notes = parseMidi(bytes);
+    if (!notes.length) throw new Error("Decoded fine, but no notes were found in the file.");
+    status.textContent = `Melody loaded from the code you scanned — decoded ${bytes.length} bytes of MIDI (via ${how}), ${notes.length} notes, ready to play below. The tune rode here inside the link itself; it never touched a server.`;
+    notesEl.textContent = "Notes: " + notes.map(n => noteName(n.note)).join(" · ");
+    playBtn.textContent = "▶ Play the melody";
+    playBtn.classList.add("bigplay");
+  } catch (err) {
+    status.textContent = "⚠️ " + err.message;
+    notesEl.textContent = "";
+  }
+})();
 </script>
 </body>
 </html>
